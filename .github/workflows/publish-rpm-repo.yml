@@ -58,15 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD/_site:/repo:ro" almalinux:9 bash -euo pipefail -c '
-            cat > /etc/yum.repos.d/ferric-verify.repo <<EOF
-[ferric-verify]
-name=FERRIC RPM Verification
-baseurl=file:///repo/rpm/\$basearch/
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=file:///repo/RPM-GPG-KEY-ferric
-EOF
+            printf "%s\n" \
+              "[ferric-verify]" \
+              "name=FERRIC RPM Verification" \
+              "baseurl=file:///repo/rpm/\$basearch/" \
+              "enabled=1" \
+              "gpgcheck=1" \
+              "repo_gpgcheck=1" \
+              "gpgkey=file:///repo/RPM-GPG-KEY-ferric" \
+              > /etc/yum.repos.d/ferric-verify.repo
             dnf --disablerepo="*" --enablerepo=ferric-verify makecache -y
             dnf --disablerepo="*" --enablerepo=ferric-verify --setopt=install_weak_deps=False install -y ferric
             /usr/bin/ferric --version
