@@ -195,6 +195,7 @@ rpm --dbpath "${VERIFY_RPMDB}" --initdb
 rpm --dbpath "${VERIFY_RPMDB}" --import "${REPO_ROOT}/RPM-GPG-KEY-ferric"
 
 shopt -s nullglob
+KEY_ID_LOWER="$(printf '%s' "${SIGNING_FPR: -8}" | tr '[:upper:]' '[:lower:]')"
 SIGNED_COUNT=0
 for rpm_file in "${OUT_DIR}"/rpm/*/Packages/*.rpm; do
   echo "Signing ${rpm_file#${OUT_DIR}/}..."
@@ -205,8 +206,8 @@ for rpm_file in "${OUT_DIR}"/rpm/*/Packages/*.rpm; do
     echo "ERROR: RPM signature verification failed for ${rpm_file}" >&2
     exit 1
   fi
-  if ! grep -q "signatures OK" <<<"${VERIFY_OUT}"; then
-    echo "ERROR: Expected 'signatures OK' in rpm -K output for ${rpm_file}" >&2
+  if ! grep -Eq "Signature, key ID ${KEY_ID_LOWER}: OK" <<<"${VERIFY_OUT}"; then
+    echo "ERROR: Expected valid signature for key ID ${KEY_ID_LOWER} in rpm -K output for ${rpm_file}" >&2
     exit 1
   fi
   SIGNED_COUNT=$((SIGNED_COUNT + 1))
