@@ -1,0 +1,97 @@
+name: Build, Sign & Deploy RPM Repository
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  repository_dispatch:
+    types:
+      - ferric-release
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-verify:
+    name: Build, Sign & Smoke-Test RPM Repo (AlmaLinux 9)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build & GPG-sign RPM repository inside AlmaLinux 9
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HOST_UID="$(id -u)"
+          HOST_GID="$(id -g)"
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            -e HOST_UID="$HOST_UID" \
+            -e HOST_GID="$HOST_GID" \
+            -e GPG_PRIVATE_KEY \
+            -e GPG_PASSPHRASE \
+            -e GITHUB_TOKEN \
+            almalinux:9 \
+            bash -euo pipefail -c '
+              dnf install -y --setopt=install_weak_deps=False \
+                rpm-sign \
+                createrepo_c \
+                gnupg2 \
+                python3 \
+                ca-certificates
+              bash /work/scripts/build_rpm_repo.sh
+            '
+
+      - name: Verify local signed RPM repo with fresh AlmaLinux 9 DNF (gpgcheck=1 + repo_gpgcheck=1)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/_site:/repo:ro" almalinux:9 bash -euo pipefail -c '
+            cat > /etc/yum.repos.d/ferric-verify.repo <<EOF
+[ferric-verify]
+name=FERRIC RPM Verification
+baseurl=file:///repo/rpm/\$basearch/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///repo/RPM-GPG-KEY-ferric
+EOF
+            dnf --disablerepo="*" --enablerepo=ferric-verify makecache -y
+            dnf --disablerepo="*" --enablerepo=ferric-verify --setopt=install_weak_deps=False install -y ferric
+            /usr/bin/ferric --version
+            test -x /usr/bin/ferric-gui
+            test -f /usr/share/applications/ferric.desktop
+            rpm -q --qf "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} sig=%{SIGPGP:pgpsig}\n" ferric
+          '
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy Signed RPM Repo to GitHub Pages
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        id: configure_pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
