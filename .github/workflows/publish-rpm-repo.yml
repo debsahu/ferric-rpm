@@ -68,7 +68,7 @@ jobs:
               "gpgkey=file:///repo/RPM-GPG-KEY-ferric" \
               > /etc/yum.repos.d/ferric-verify.repo
             dnf --disablerepo="*" --enablerepo=ferric-verify makecache -y
-            dnf --disablerepo="*" --enablerepo=ferric-verify --setopt=install_weak_deps=False install -y ferric
+            dnf --disablerepo="*" --enablerepo=baseos,appstream,ferric-verify --setopt=install_weak_deps=False install -y ferric
             /usr/bin/ferric --version
             test -x /usr/bin/ferric-gui
             test -f /usr/share/applications/ferric.desktop
